@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -33,7 +32,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.crudmobile.ui.theme.CrudmobileTheme
-import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -42,18 +40,12 @@ class MainViewModel : ViewModel() {
     val crudRepository = CrudRepository()
 
     // Cria a lista de produtos vazia inicialmente
-    val products = MutableLiveData<List<Product>>()
+    val products = MutableLiveData<List<Product>>(emptyList())
 
-    val clients = MutableLiveData<List<Client>>()
+    val clients = MutableLiveData<List<Client>>(emptyList())
 
     init {
-        // Dispatchers.IO faz a comunicação com o servidor em uma thread separada para evitar
-        // travamentos na tela (busca os dados em segundo plano)
-        viewModelScope.launch(Dispatchers.IO) {
-            // Busca os produtos do repositório
-            updateProducts()
-        }
-
+        updateProductsList()
         updateClientsList()
     }
 
@@ -62,7 +54,7 @@ class MainViewModel : ViewModel() {
         // travamentos na tela (busca os dados em segundo plano)
         viewModelScope.launch(Dispatchers.IO) {
             // Busca os produtos do repositório
-            updateProducts()
+            getProductsFromServer()
         }
     }
 
@@ -75,7 +67,7 @@ class MainViewModel : ViewModel() {
                     price = price,
                 )
             )
-            updateProducts()
+            getProductsFromServer()
         }
     }
 
@@ -84,12 +76,12 @@ class MainViewModel : ViewModel() {
             crudRepository.deleteProduct(
                 id
             )
-            updateProducts()
+            getProductsFromServer()
         }
 
     }
 
-    private suspend fun updateProducts() {
+    private suspend fun getProductsFromServer() {
         crudRepository.getProducts().let {
             // Atualiza a variavel de produtos com os dados retornados do servidor
             products.postValue(it)
@@ -98,9 +90,34 @@ class MainViewModel : ViewModel() {
 
     fun updateClientsList() {
         viewModelScope.launch(Dispatchers.IO) {
-            crudRepository.getClients().let {
-                clients.postValue(it)
-            }
+            getClientsFromServer()
+        }
+    }
+
+    fun deleteClient(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            crudRepository.deleteClient(
+                id
+            )
+            updateClientsList()
+        }
+    }
+
+    fun createClient(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            crudRepository.createClient(
+                Client(
+                    id = clients.value!!.size + 1,
+                    name = name,
+                )
+            )
+            getClientsFromServer()
+        }
+    }
+
+    suspend fun getClientsFromServer() {
+        crudRepository.getClients().let {
+            clients.postValue(it)
         }
     }
 
@@ -127,12 +144,18 @@ class MainActivity : ComponentActivity() {
                         // Envia a lista de produtos para ser desenhado na UI
                         products = productsList.value ?: emptyList(),
                         updateProductsList = { mainVM.updateProductsList() },
-                        createProduct = { name, price -> mainVM.createProduct(name, price) },
+                        createProduct = { name, price ->
+                            mainVM.createProduct(
+                                name,
+                                price
+                            )
+                        },
                         deleteProduct = { id -> mainVM.deleteProduct(id) },
                         clients = clientsList.value ?: emptyList(),
                         updateClientsList = { mainVM.updateClientsList() },
-
-                        )
+                        deleteClient = { id -> mainVM.deleteClient(id) },
+                        createClient = { name -> mainVM.createClient(name) },
+                    )
                 }
             }
         }
@@ -147,6 +170,8 @@ fun MainScreen(
     createProduct: (String, String) -> Unit,
     clients: List<Client>,
     updateClientsList: () -> Unit,
+    deleteClient: (Int) -> Unit,
+    createClient: (String) -> Unit
 ) {
     // Implementação da UI do aplicativo
     Column(modifier = Modifier.fillMaxSize()) {
@@ -173,12 +198,11 @@ fun MainScreen(
                     Text(text = it.price)
                     Button(onClick = { deleteProduct(it.id) }) {
                         Text(text = "Delete")
-
                     }
                 }
             }
-
         }
+
 
         var productName = remember { mutableStateOf("") }
         var productPrice = remember { mutableStateOf("") }
@@ -208,7 +232,9 @@ fun MainScreen(
             }
         }
 
-        Button(onClick = { updateProductsList() }) {
+        Button(onClick =
+        { updateProductsList() })
+        {
             Text(text = "Update")
         }
 
@@ -241,12 +267,40 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(text = it.name)
+                    Button(onClick = { deleteClient(it.id) }) {
+                        Text(text = "Delete")
+                    }
                 }
+            }
+        }
+
+        var clientName = remember { mutableStateOf("") }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            BasicTextField(
+                value = clientName.value,
+                onValueChange = { clientName.value = it }
+            )
+
+            Button(
+                onClick = {
+                    createClient(clientName.value)
+                    clientName.value = ""
+                    clientName.value = ""
+                }
+            ) {
+                Text(text = "+")
             }
         }
         Button(onClick = { updateClientsList() }) {
             Text(text = "Update clients")
         }
+
     }
 }
 
@@ -270,38 +324,13 @@ fun MainPreview() {
             updateProductsList = {},
             createProduct = { name, price -> },
             deleteProduct = {},
+            createClient = {},
+            deleteClient = {},
         )
     }
 }
 
 
-// todo message not found products
-
-// CREATE CLIENT
-// No MainScreen
-// TODO adicionar um row para o campo de texto e o botão de criar cliente
-// TODO criar variavel para nome do cliente (variavelDoNomeDoCliente)
-// TODO criar o campo de texto para o nome do cliente (BasicTextField)
-// TODO criar botão para criar cliente
-// TODO criar a função createClient(name: String) como parametro do MainScreen()
-// TODO chamar a função createClient(variavelDoNomeDoCliente) no onClick do botão
-
-// No ViewModel
-// TODO criar a função createClient(name: String) no ViewModel
-// TODO chamar em uma thread separada viewmodelscope.launch(Dispatecher.IO)
-// TODO chamar o repository createClient( Client(id, name) ) calcular o id pelo tamanho da lista + 1
-
-
-
-// DELETE CLIENT
-// TODO dentro dos items da LazyColumn da lista de clientes adicionar o botão de delete
-// TODO criar a função deleteClient(id: Int) como parametro do MainScreen()
-// TODO chamar a função deleteClient(it.id) no onclick do botão delete
-
-// No ViewModel
-// TODO criar a função deleteClient(id: Int) no ViewModel
-// TODO chamar em uma thread separada viewmodelscope.launch(Dispatecher.IO)
-// TODO chamar o repository deleteClient(id)
 
 
 // Documentação
@@ -317,3 +346,16 @@ fun MainPreview() {
 
 // documentação backend
 // https://ktor.io/docs/server-create-a-new-project.html
+
+
+// tudo que abre fecha
+
+// fora do vm
+class viewmodel {
+    // dentro do vm
+}
+// fora do vm
+
+
+// se for objeto de UI (botao, coluna, linha)
+// dentro da fun com @Composable

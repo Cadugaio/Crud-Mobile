@@ -78,7 +78,7 @@ interface ClientsApi {
         @Body name: String
     )
 
-    @DELETE("/remove-product/{id}")
+    @DELETE("/remove-client/{id}")
     suspend fun deleteClient(
         @Path("id") id: Int
     )
